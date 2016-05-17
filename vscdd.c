@@ -12,6 +12,8 @@
 #include <linux/types.h>        /* dev_t */
 #include <linux/cdev.h>
 #include <asm/uaccess.h>        /* copy_*_user */
+#include <linux/version.h> 
+#include <linux/device.h>
 
 #ifndef MODULE_NAME
 #define MODULE_NAME "vscdd"
@@ -38,6 +40,7 @@ static int device_open = 0;
  */ 
 struct cdev *cdev;
 
+static struct class *devclass;
 /* 
  * Память устройства
  */
@@ -130,7 +133,14 @@ struct file_operations vscdd_fops = {
  */
 static void __exit vscdd_exit(void) 
 {
-	dev_t devno = MKDEV(major, minor);
+	dev_t dev;
+   	int i;
+   	for( i = 0; i < count; i++ ) {
+      		dev = MKDEV( major, minor + i );
+      		device_destroy( devclass, dev );
+   	}
+    	class_destroy( devclass );
+	
 	if (cdev) {
 		cdev_del(cdev);
 	}
@@ -150,6 +160,7 @@ static void __exit vscdd_exit(void)
 static int __init vscdd_init(void)
 {
 	int result;
+	int i;
 	dev_t dev = 0;
 	result = 0;
 
@@ -180,6 +191,20 @@ static int __init vscdd_init(void)
 		pr_info("=== vscdd: cdev_add error ===\n");
 	}
 	pr_info( "=== vscdd: %d:%d ===\n", major, minor);
+	
+	devclass = class_create( THIS_MODULE, "vscdd_class" ); /* struct class* */
+   	for( i = 0; i < count; i++ ) {
+#define DEVNAME "vscdd"
+      	dev = MKDEV( major, minor + i );
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,26)
+
+      device_create( devclass, NULL, dev, "%s_%d", DEVNAME, i );
+#else
+
+      device_create( devclass, NULL, dev, NULL, "%s_%d", DEVNAME, i );
+#endif
+   }
+   	pr_info( "======== module installed %d:[%d-%d] ===========\n", MAJOR( dev ), minor, MINOR( dev ) ); 
 
 	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
 	if (!vscdd_buffer) {
