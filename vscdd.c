@@ -41,6 +41,16 @@ static int device_open = 0;
 struct cdev *cdev;
 
 static struct class *devclass;
+
+struct vscdd_dev { struct vscdd_qset *data;  
+                   int quantum; 
+                   int qset; 
+                   unsigned long size;  
+                   unsigned int access_key; 
+                   struct semaphore sem;
+                   struct cdev cdev;
+	
+};
 /* 
  * Память устройства
  */
@@ -51,6 +61,15 @@ static char *vscdd_buffer;
  */
 int vscdd_open(struct inode *inode, struct file *filp)
 {
+	static int counter = 0;
+	if (device_open) {
+		pr_info("=== Device is already opened ===\n");
+		return -EBUSY;
+	}
+	device_open++;
+	counter++;
+	pr_info("=== Opening device for %d time===\n", counter);
+	try_module_get(THIS_MODULE);
 	return 0;
 }
 
@@ -59,9 +78,37 @@ int vscdd_open(struct inode *inode, struct file *filp)
  */
 int vscdd_release(struct inode *inode, struct file *filp)
 {
+	device_open--;
+	module_put(THIS_MODULE);
 	return 0;
 }
 
+
+loff_t llseek(struct file *filp, loff_t off, int whence)
+{
+  struct vscdd_dev *dev = filp->private_data;
+  loff_t new_pos;
+
+  switch(whence) {
+   case 0: 
+    new_pos = off;
+    break;
+
+   case 1: 
+    new_pos = filp->f_pos + off;
+    break;
+
+   case 2: 
+    new_pos = dev->size + off;
+    break;
+
+   default:
+    return -EINVAL;
+  }
+  if (new_pos<0) return -EINVAL;
+  filp->f_pos = new_pos;
+  return new_pos;
+}
 /*
  * Функция чтения из устройства
  */
@@ -121,7 +168,7 @@ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
  */
 struct file_operations vscdd_fops = {
 	.owner =    THIS_MODULE,
-	//.llseek =   llseek,
+	.llseek =   llseek,
 	.read =     vscdd_read,
 	.write =    vscdd_write,
 	.open =     vscdd_open,
@@ -134,6 +181,7 @@ struct file_operations vscdd_fops = {
 static void __exit vscdd_exit(void) 
 {
 	dev_t dev;
+	dev_t devno = MKDEV(major, minor);
    	int i;
    	for( i = 0; i < count; i++ ) {
       		dev = MKDEV( major, minor + i );
@@ -227,7 +275,7 @@ static int __init vscdd_init(void)
 module_init(vscdd_init);
 module_exit(vscdd_exit);
 
-MODULE_LICENSE("DUAL BSD/GPL");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR ("МИФИ");
 MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства");
 MODULE_VERSION("20160503");
