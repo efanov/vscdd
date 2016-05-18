@@ -42,15 +42,8 @@ struct cdev *cdev;
 
 static struct class *devclass;
 
-struct vscdd_dev { struct vscdd_qset *data;  
-                   int quantum; 
-                   int qset; 
-                   unsigned long size;  
-                   unsigned int access_key; 
-                   struct semaphore sem;
-                   struct cdev cdev;
-	
-};
+static int current_size = 0;
+
 /* 
  * Память устройства
  */
@@ -67,8 +60,7 @@ int vscdd_open(struct inode *inode, struct file *filp)
 		return -EBUSY;
 	}
 	device_open++;
-	counter++;
-	pr_info("=== Opening device for %d time===\n", counter);
+	pr_info("=== Opening device for %d time ===\n", ++counter);
 	try_module_get(THIS_MODULE);
 	return 0;
 }
@@ -78,28 +70,28 @@ int vscdd_open(struct inode *inode, struct file *filp)
  */
 int vscdd_release(struct inode *inode, struct file *filp)
 {
+  if (!device_open) return -EFAULT;
 	device_open--;
 	module_put(THIS_MODULE);
 	return 0;
 }
 
 
-loff_t llseek(struct file *filp, loff_t off, int whence)
+loff_t llseek(struct file *filp, loff_t off, int type)
 {
-  struct vscdd_dev *dev = filp->private_data;
-  loff_t new_pos;
+  loff_t newpos;
 
-  switch(whence) {
+  switch(type) {
    case 0: 
-    new_pos = off;
+    newpos = off;
     break;
 
    case 1: 
-    new_pos = filp->f_pos + off;
+    newpos = filp->f_pos + off;
     break;
 
    case 2: 
-    new_pos = dev->size + off;
+    newpos = current_size + off;
     break;
 
    default:
@@ -182,12 +174,12 @@ static void __exit vscdd_exit(void)
 {
 	dev_t dev;
 	dev_t devno = MKDEV(major, minor);
-   	int i;
-   	for( i = 0; i < count; i++ ) {
-      		dev = MKDEV( major, minor + i );
-      		device_destroy( devclass, dev );
-   	}
-    	class_destroy( devclass );
+  int i;
+  for( i = 0; i < count; i++ ) {
+    		dev = MKDEV( major, minor + i );
+    		device_destroy( devclass, dev );
+  }
+  class_destroy( devclass );
 	
 	if (cdev) {
 		cdev_del(cdev);
@@ -240,19 +232,17 @@ static int __init vscdd_init(void)
 	}
 	pr_info( "=== vscdd: %d:%d ===\n", major, minor);
 	
-	devclass = class_create( THIS_MODULE, "vscdd_class" ); /* struct class* */
+	devclass = class_create( THIS_MODULE, "vscdd_class" );
    	for( i = 0; i < count; i++ ) {
 #define DEVNAME "vscdd"
-      	dev = MKDEV( major, minor + i );
+      dev = MKDEV( major, minor + i );
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,26)
-
       device_create( devclass, NULL, dev, "%s_%d", DEVNAME, i );
 #else
-
       device_create( devclass, NULL, dev, NULL, "%s_%d", DEVNAME, i );
 #endif
    }
-   	pr_info( "======== module installed %d:[%d-%d] ===========\n", MAJOR( dev ), minor, MINOR( dev ) ); 
+   	pr_info( "======== module installed %d:[%d-%d] ========\n", MAJOR( dev ), minor, MINOR( dev ) ); 
 
 	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
 	if (!vscdd_buffer) {
