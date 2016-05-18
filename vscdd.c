@@ -42,15 +42,7 @@ struct cdev *cdev;
 
 static struct class *devclass;
 
-struct vscdd_dev { struct vscdd_qset *data;  
-                   int quantum; 
-                   int qset; 
-                   unsigned long size;  
-                   unsigned int access_key; 
-                   struct semaphore sem;
-                   struct cdev cdev;
-	
-};
+static int cur_size = 0;
 /* 
  * Память устройства
  */
@@ -61,14 +53,12 @@ static char *vscdd_buffer;
  */
 int vscdd_open(struct inode *inode, struct file *filp)
 {
-	static int counter = 0;
 	if (device_open) {
 		pr_info("=== Device is already opened ===\n");
 		return -EBUSY;
 	}
 	device_open++;
-	counter++;
-	pr_info("=== Opening device for %d time===\n", counter);
+	зr_info("=== Opening device ===\n");
 	try_module_get(THIS_MODULE);
 	return 0;
 }
@@ -86,7 +76,6 @@ int vscdd_release(struct inode *inode, struct file *filp)
 
 loff_t llseek(struct file *filp, loff_t off, int whence)
 {
-  struct vscdd_dev *dev = filp->private_data;
   loff_t new_pos;
 
   switch(whence) {
@@ -99,7 +88,7 @@ loff_t llseek(struct file *filp, loff_t off, int whence)
     break;
 
    case 2: 
-    new_pos = dev->size + off;
+    new_pos = cur_size + off;
     break;
 
    default:
