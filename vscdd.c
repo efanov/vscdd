@@ -62,7 +62,7 @@ int vscdd_open(struct inode *inode, struct file *filp)
 		return -EBUSY;
 	}
 	device_open++;
-	зr_info("=== Opening device ===\n");
+	pr_info("=== Opening device ===\n");
 	try_module_get(THIS_MODULE);
 	return 0;
 }
