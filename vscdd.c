@@ -35,6 +35,11 @@ module_param(count, int, S_IRUGO);
  */
 static int device_open = 0;
 
+/*
+* Размер файла (для llseek)
+*/
+static int cur_size = 0;
+
 /* 
  * Структура драйвера символьного устройства
  */ 
@@ -42,7 +47,6 @@ struct cdev *cdev;
 
 static struct class *devclass;
 
-static int cur_size = 0;
 /* 
  * Память устройства
  */
@@ -68,27 +72,29 @@ int vscdd_open(struct inode *inode, struct file *filp)
  */
 int vscdd_release(struct inode *inode, struct file *filp)
 {
+	if (!device_open) return -EFAULT;
 	device_open--;
 	module_put(THIS_MODULE);
 	return 0;
 }
-
-
-loff_t llseek(struct file *filp, loff_t off, int whence)
+/*
+ * Функция перемещения указателя чтения-записи
+ */
+loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
 {
   loff_t new_pos;
 
-  switch(whence) {
+  switch(origin) {
    case 0: 
-    new_pos = off;
+    new_pos = offset;
     break;
 
    case 1: 
-    new_pos = filp->f_pos + off;
+    new_pos = filp->f_pos + offset;
     break;
 
    case 2: 
-    new_pos = cur_size + off;
+    new_pos = cur_size + offset;
     break;
 
    default:
@@ -157,7 +163,7 @@ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
  */
 struct file_operations vscdd_fops = {
 	.owner =    THIS_MODULE,
-	.llseek =   llseek,
+	.llseek =   vscdd_llseek,
 	.read =     vscdd_read,
 	.write =    vscdd_write,
 	.open =     vscdd_open,
@@ -196,8 +202,8 @@ static void __exit vscdd_exit(void)
  */
 static int __init vscdd_init(void)
 {
-	int result;
 	int i;
+	int result;
 	dev_t dev = 0;
 	result = 0;
 
@@ -229,7 +235,8 @@ static int __init vscdd_init(void)
 	}
 	pr_info( "=== vscdd: %d:%d ===\n", major, minor);
 	
-	devclass = class_create( THIS_MODULE, "vscdd_class" ); /* struct class* */
+	devclass = class_create( THIS_MODULE, "vscdd_class" ); 
+   	
    	for( i = 0; i < count; i++ ) {
 #define DEVNAME "vscdd"
       	dev = MKDEV( major, minor + i );
@@ -241,7 +248,7 @@ static int __init vscdd_init(void)
       device_create( devclass, NULL, dev, NULL, "%s_%d", DEVNAME, i );
 #endif
    }
-   	pr_info( "======== module installed %d:[%d-%d] ===========\n", MAJOR( dev ), minor, MINOR( dev ) ); 
+   	pr_info( "=== module installed %d:[%d-%d] ===\n", MAJOR(dev), minor, MINOR(dev) ); 
 
 	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
 	if (!vscdd_buffer) {
@@ -266,5 +273,5 @@ module_exit(vscdd_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR ("МИФИ");
-MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства");
+MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства, дополен Меркель А.В.");
 MODULE_VERSION("20160503");
