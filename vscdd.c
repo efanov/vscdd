@@ -58,11 +58,11 @@ static char *vscdd_buffer;
 int vscdd_open(struct inode *inode, struct file *filp)
 {
 	if (device_open) {
-		pr_info("=== Device is already opened ===\n");
+		pr_info("=== vscdd: device is already opened ===\n");
 		return -EBUSY;
 	}
 	device_open++;
-	pr_info("=== Opening device ===\n");
+	pr_info("=== vscdd: opening device ===\n");
 	try_module_get(THIS_MODULE);
 	return 0;
 }
@@ -152,6 +152,7 @@ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
 	}
 	// увеличить значение указателя
 	*f_pos += count;
+	cur_size += count;
 	retval = count;
 
   out:
@@ -248,7 +249,7 @@ static int __init vscdd_init(void)
       device_create( devclass, NULL, dev, NULL, "%s_%d", DEVNAME, i );
 #endif
    }
-   	pr_info( "=== module installed %d:[%d-%d] ===\n", MAJOR(dev), minor, MINOR(dev) ); 
+   	pr_info( "=== vscdd: module installed %d:[%d-%d] ===\n", MAJOR(dev), minor, MINOR(dev) ); 
 
 	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
 	if (!vscdd_buffer) {
@@ -273,5 +274,5 @@ module_exit(vscdd_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR ("МИФИ");
-MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства, дополен Меркель А.В.");
+MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства, дополнен Меркель А.В.");
 MODULE_VERSION("20160503");
