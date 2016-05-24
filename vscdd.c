@@ -278,4 +278,4 @@ module_exit(vscdd_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR ("МИФИ");
 MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства, дополнен Брагиным Д. М.");
-MODULE_VERSION("20160503");
+MODULE_VERSION("20160524");
