@@ -84,6 +84,9 @@ loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
 {
   loff_t new_pos;
 
+  pr_info("=== vscdd: f_pos = %d ===\n", filp->f_pos); // распечатываем значения для проверки работы ф-ии (с помощью test.c)
+  pr_info("=== vscdd: offset = %d ===\n", offset);
+ 
   switch(origin) {
    case 0: 
     new_pos = offset;
@@ -100,6 +103,8 @@ loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
    default:
     return -EINVAL;
   }
+  pr_info("=== vscdd: new_pos = %d===\n", new_pos);
+  
   if (new_pos<0) return -EINVAL;
   filp->f_pos = new_pos;
   return new_pos;
