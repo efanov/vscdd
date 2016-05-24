@@ -63,7 +63,6 @@ int vscdd_open(struct inode *inode, struct file *filp)
 	}
 	device_open++;
 	pr_info("=== vscdd: opening device ===\n");
-	try_module_get(THIS_MODULE);
 	return 0;
 }
 
@@ -74,7 +73,6 @@ int vscdd_release(struct inode *inode, struct file *filp)
 {
 	if (!device_open) return -EFAULT;
 	device_open--;
-	module_put(THIS_MODULE);
 	return 0;
 }
 /*
