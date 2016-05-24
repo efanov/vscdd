@@ -213,7 +213,8 @@ static void __exit vscdd_exit(void)
  */
 static int __init vscdd_init(void)
 {
-	int result, i;
+	int result;
+	int i;
 	dev_t dev = 0;
 	result = 0;
 
