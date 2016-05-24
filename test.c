@@ -3,5 +3,5 @@ main(){
 	lseek(fd, 3, 0);
 	lseek(fd, 3, 1);
 	lseek(fd, 3, 2);
-  close();
+        close();
 }
