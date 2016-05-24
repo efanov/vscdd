@@ -12,6 +12,8 @@
 #include <linux/types.h>        /* dev_t */
 #include <linux/cdev.h>
 #include <asm/uaccess.h>        /* copy_*_user */
+#include <linux/version.h>
+#include <linux/device.h>
 
 #ifndef MODULE_NAME
 #define MODULE_NAME "vscdd"
@@ -33,6 +35,7 @@ module_param(count, int, S_IRUGO);
  */
 static int device_open = 0;
 
+static struct class *devclass;
 /* 
  * Структура драйвера символьного устройства
  */ 
@@ -46,16 +49,38 @@ static char *vscdd_buffer;
 /*
  * Функция открытия устройства
  */
-int vscdd_open(struct inode *inode, struct file *filp)
+int vscdd_open(struct inode *inode, struct file *filp) // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 {
+	if (device_open) {
+		printk("Aattention! The device is already open.\n");
+		return -EBUSY;
+	}
+	device_open++;
+	try_module_get(THIS_MODULE);
 	return 0;
 }
+
+struct my_dev{
+	struct scull_qset *data;
+	int quantum;
+	int qset;
+	unsigned long size;
+	unsigned int access_key;
+	struct semaphore sem;
+	struct cdev cdev;
+};
 
 /*
  * Функция освобождения устройства
  */
-int vscdd_release(struct inode *inode, struct file *filp)
+int vscdd_release(struct inode *inode, struct file *filp)  //<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 {
+	if (!device_open) {
+		printk("Aattention! The device is not open.\n");
+		return -EFAULT;
+	}
+	device_open--;
+	module_put(THIS_MODULE);
 	return 0;
 }
 
@@ -69,6 +94,7 @@ ssize_t vscdd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_
 	
 	// количество байтов, которое осталось прочитать
 	int remain = 100 - (int) (*f_pos); 
+
 	if (remain == 0) 
 		return 0;	
 	if (count > remain)
@@ -84,6 +110,8 @@ ssize_t vscdd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_
   out:
 	return retval;
 }
+
+static int size = 0;
 
 /*
  * Функция записи в устройство
@@ -107,30 +135,66 @@ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
 	}
 	// увеличить значение указателя
 	*f_pos += count;
+	size += count; ///
 	retval = count;
 
   out:
 	return retval;
 }
 
+loff_t dev_llseek(struct file *filp, loff_t off, int type){ // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+	
+	loff_t new_position;
+	printk("===f_pos = %d===", filp->f_pos);
+	printk("===off = %d===", off);
+	
+	if (type == SEEK_SET) new_position = off;
+	if (type == SEEK_CUR) new_position = filp->f_pos + off;
+	if (type == SEEK_END) new_position = size + off;
+	
+	printk("===new_position = %d===", new_position);
+	
+	if (new_position < 0) {
+		printk("Aattention! new_position < 0.\n");
+		return -EINVAL;
+	}
+	
+	filp->f_pos = new_position;
+	return new_position;
+	
+}
+
+
 /*
  * Функция драйвера для работы с устройством
  */
 struct file_operations vscdd_fops = {
 	.owner =    THIS_MODULE,
-	//.llseek =   llseek,
+	.llseek =   dev_llseek, // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 	.read =     vscdd_read,
 	.write =    vscdd_write,
 	.open =     vscdd_open,
 	.release =  vscdd_release,
 };
 
+
+
+
 /* 
  * Функция выгрузки модуля и освобождения драйвера
  */
 static void __exit vscdd_exit(void) 
 {
+	dev_t dev;
+	int i;
 	dev_t devno = MKDEV(major, minor);
+	
+	for (i = 0; i < count; i++){
+		dev = MKDEV(major, minor + i);
+		device_destroy(devclass, dev);
+	}
+	class_destroy(devclass);
+
 	if (cdev) {
 		cdev_del(cdev);
 	}
@@ -149,7 +213,7 @@ static void __exit vscdd_exit(void)
  */
 static int __init vscdd_init(void)
 {
-	int result;
+	int result, i;
 	dev_t dev = 0;
 	result = 0;
 
@@ -181,6 +245,18 @@ static int __init vscdd_init(void)
 	}
 	pr_info( "=== vscdd: %d:%d ===\n", major, minor);
 
+	devclass = class_create( THIS_MODULE, "vscdd_class");
+	for (i = 0; i < count; i++){
+#define DEVNAME "vscdd"
+		dev = MKDEV(major, minor + i);
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,26)
+		device_create(devclass, NULL, dev, "%s_%d", DEVNAME, i);
+#else
+		device_create(devclass, NULL, dev, NULL, "%s_%d", DEVNAME, i);
+#endif	
+	}
+	pr_info("==module installed %d:[%d-%d]==\n", MAJOR(dev), minor, MINOR(dev));
+	
 	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
 	if (!vscdd_buffer) {
 		result = -ENOMEM;
@@ -202,7 +278,7 @@ static int __init vscdd_init(void)
 module_init(vscdd_init);
 module_exit(vscdd_exit);
 
-MODULE_LICENSE("DUAL BSD/GPL");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR ("МИФИ");
 MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства");
 MODULE_VERSION("20160503");
