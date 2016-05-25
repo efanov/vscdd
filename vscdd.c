@@ -1,208 +1,252 @@
-/*
- * Шаблон для разработки драйвера символьного устройства
- * vscdd.c -- very simple chrdev driver
- */
-
 #include <linux/module.h>
-#include <linux/moduleparam.h>  /* command-line args */
-#include <linux/init.h>
-#include <linux/kernel.h>       /* printk() */
-#include <linux/slab.h>		/* kfree(), kmalloc() */
-#include <linux/fs.h>           /* file_operations */
-#include <linux/types.h>        /* dev_t */
-#include <linux/cdev.h>
-#include <asm/uaccess.h>        /* copy_*_user */
-
-#ifndef MODULE_NAME
-#define MODULE_NAME "vscdd"
-#endif
-
+ #include <linux/moduleparam.h>  /* command-line args */
+ #include <linux/init.h>
+ #include <linux/kernel.h>       /* printk() */
+ #include <linux/slab.h>		/* kfree(), kmalloc() */
+ #include <linux/fs.h>           /* file_operations */
+ #include <linux/types.h>        /* dev_t */
+ #include <linux/cdev.h>
+ #include <asm/uaccess.h>        /* copy_*_user */
++#include <linux/version.h> 
++#include <linux/device.h>
+ 
+ #ifndef MODULE_NAME
+ #define MODULE_NAME "vscdd"
+ #endif
+ 
+ /*
+  *  Параметры модуля, которые можно передать при загрузке
+  *  insmod ./vscdd.ko major=345 minor=5 count=3
+  */
+ int major = 0; // старший номер устройства, 0 - динамическое выделение
+ int minor = 0; // младший номер первого устройства
+ int count = 1; // количество устройств, для каждого нужен отдельный файл
+ module_param(major, int, S_IRUGO);
+ module_param(minor, int, S_IRUGO);
+ module_param(count, int, S_IRUGO); 
+ 
+ /*
+  * Счетчик использования устройства
+  */
+ static int device_open = 0;
+ 
 /*
- *  Параметры модуля, которые можно передать при загрузке
- *  insmod ./vscdd.ko major=345 minor=5 count=3
- */
-int major = 0; // старший номер устройства, 0 - динамическое выделение
-int minor = 0; // младший номер первого устройства
-int count = 1; // количество устройств, для каждого нужен отдельный файл
-module_param(major, int, S_IRUGO);
-module_param(minor, int, S_IRUGO);
-module_param(count, int, S_IRUGO); 
++* Размер файла (для llseek)
++*/
+static int cur_size = 0;
 
-/*
- * Счетчик использования устройства
- */
-static int device_open = 0;
+ /* 
+  * Структура драйвера символьного устройства
+  */ 
+ struct cdev *cdev;
+ 
+static struct class *devclass;
 
-/* 
- * Структура драйвера символьного устройства
- */ 
-struct cdev *cdev;
-
-/* 
- * Память устройства
- */
-static char *vscdd_buffer;
-
-/*
- * Функция открытия устройства
- */
-int vscdd_open(struct inode *inode, struct file *filp)
-{
-	return 0;
-}
-
-/*
- * Функция освобождения устройства
- */
-int vscdd_release(struct inode *inode, struct file *filp)
-{
-	return 0;
-}
-
-/*
- * Функция чтения из устройства
- */
-ssize_t vscdd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos) 
-{
-	// код возврата
-	ssize_t retval = 0;
-	
-	// количество байтов, которое осталось прочитать
-	int remain = 100 - (int) (*f_pos); 
-	if (remain == 0) 
-		return 0;	
-	if (count > remain)
-		count = remain;
-
-	if (copy_to_user(buf /* куда */, vscdd_buffer + *f_pos /* откуда */, count /* сколько */)) {
-		retval = -EFAULT;
-		goto out;
+ /* 
+  * Память устройства
+  */
+ static char *vscdd_buffer;
+ 
+ /*
+  * Функция открытия устройства
+  */
+ int vscdd_open(struct inode *inode, struct file *filp)
+ {
+	if (device_open) {
+		pr_info("=== vscdd: device is already opened ===\n");
+		return -EBUSY;
 	}
-	*f_pos += count;
-	retval = count;
-
-  out:
-	return retval;
-}
-
+	device_open++;
+	pr_info("=== vscdd: opening device ===\n");
+ 	return 0;
+ }
+ 
+ /*
+  * Функция освобождения устройства
+  */
+ int vscdd_release(struct inode *inode, struct file *filp)
+ {
+	if (!device_open) return -EFAULT;
+	device_open--;
+ 	return 0;
+ }
 /*
- * Функция записи в устройство
+ * Функция перемещения указателя чтения-записи
  */
-ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
+loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
 {
-	// код возврата
-	ssize_t retval = 0;
-	
-	// количество байтов, которое осталось записать
-	int remain = 100 - (int) (*f_pos); 
+  loff_t new_pos;
+ 
+  pr_info("=== vscdd: f_pos = %d ===\n", filp->f_pos); 
+  pr_info("=== vscdd: offset = %d ===\n", offset);
+ 
+  switch(origin) {
+   case 0: 
+    new_pos = offset;
+    break;
 
-	if (count > remain) {
-		// нельзя писать за пределы памяти устройства
-		return -EIO;
-	}
+   case 1: 
+    new_pos = filp->f_pos + offset;
+    break;
 
-	if (copy_from_user(vscdd_buffer + *f_pos /* куда */, buf /* откуда */, count /* сколько */)) {
-		retval = -EFAULT;
-		goto out;
-	}
-	// увеличить значение указателя
-	*f_pos += count;
-	retval = count;
+   case 2: 
+    new_pos = cur_size + offset;
+    break;
 
-  out:
-	return retval;
+   default:
+    return -EINVAL;
+  }
+  pr_info("=== vscdd: new_pos = %d===\n", new_pos);
+  
+  if (new_pos<0) return -EINVAL;
+  filp->f_pos = new_pos;
+  return new_pos;
 }
+ /*
+  * Функция чтения из устройства
+  */
 
-/*
- * Функция драйвера для работы с устройством
- */
-struct file_operations vscdd_fops = {
-	.owner =    THIS_MODULE,
-	//.llseek =   llseek,
-	.read =     vscdd_read,
-	.write =    vscdd_write,
-	.open =     vscdd_open,
-	.release =  vscdd_release,
-};
-
-/* 
- * Функция выгрузки модуля и освобождения драйвера
- */
-static void __exit vscdd_exit(void) 
-{
-	dev_t devno = MKDEV(major, minor);
-	if (cdev) {
-		cdev_del(cdev);
-	}
-
-	if (vscdd_buffer) 
-		kfree(vscdd_buffer);
+ 	// код возврата
+ 	ssize_t retval = 0;
  	
-	// Освобождаем старшие и младшие номера устройств.
-	unregister_chrdev_region(devno, count);
+ 	// количество байтов, которое осталось прочитать
+ 	int remain = 100 - (int) (*f_pos); 
+ 	if (remain == 0) 
+ 		return 0;	
+ 	if (count > remain)
+ 		count = remain;
+ 
+ 	if (copy_to_user(buf /* куда */, vscdd_buffer + *f_pos /* откуда */, count /* сколько */)) {
+ 		retval = -EFAULT;
+ 		goto out;
+ 	}
+ 	*f_pos += count;
+ 	retval = count;
+ 
+   out:
+ 	return retval;
+ }
+ 
+ /*
+  * Функция записи в устройство
+  */
+ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
+ {
+ 	// код возврата
+ 	ssize_t retval = 0;
+ 	
+ 	// количество байтов, которое осталось записать
+ 	int remain = 100 - (int) (*f_pos); 
+ 
+ 	if (count > remain) {
+ 		// нельзя писать за пределы памяти устройства
+ 		return -EIO;
+ 	}
+ 
+ 	if (copy_from_user(vscdd_buffer + *f_pos /* куда */, buf /* откуда */, count /* сколько */)) {
+ 		retval = -EFAULT;
+ 		goto out;
+ 	}
+ 	// увеличить значение указателя
+ 	*f_pos += count;
+	cur_size += count;
+ 	retval = count;
+ 
+   out:
+ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
 
-	pr_info("=== vscdd: exit ===\n");
-}
+ struct file_operations vscdd_fops = {
+ 	.owner =    THIS_MODULE,
+	.llseek =   vscdd_llseek,
+ 	.read =     vscdd_read,
+ 	.write =    vscdd_write,
+ 	.open =     vscdd_open,
+ struct file_operations vscdd_fops = {
 
-/* 
- * Функция загрузки модуля и инициализации драйвера
- */
-static int __init vscdd_init(void)
-{
-	int result;
-	dev_t dev = 0;
-	result = 0;
-
-	if (major) { 
-		// если пользователь указал старший номер через параметр
-		dev = MKDEV(major, minor);
-		result = register_chrdev_region(dev, count, MODULE_NAME);
-	} else {          
-		// если major == 0, то получить старший номер динамически
-		result = alloc_chrdev_region(&dev, minor, count, MODULE_NAME);
-	  	 // зафиксировать динамически полученный старший номер
-		major = MAJOR(dev);
-	}
-
-	if (result < 0) { 
-		pr_info("=== vscdd: can't get a majori ===\n");
-		return result;	
-	}
-
-	cdev = cdev_alloc();
- 	if (!cdev) {
-		result = -ENOMEM;
-		goto fail; 
-	}
-	cdev_init(cdev, &vscdd_fops);
-	cdev->owner   = THIS_MODULE;
-	if (cdev_add(cdev, dev, count)) { 
-		pr_info("=== vscdd: cdev_add error ===\n");
-	}
-	pr_info( "=== vscdd: %d:%d ===\n", major, minor);
-
-	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
-	if (!vscdd_buffer) {
-		result = -ENOMEM;
-		goto fail;
-	}
+ static void __exit vscdd_exit(void) 
+ {
+	dev_t dev;
+ 	dev_t devno = MKDEV(major, minor);
+   	int i;
+   	for( i = 0; i < count; i++ ) {
+      		dev = MKDEV( major, minor + i );
+      		device_destroy( devclass, dev );
+   	}
+    	class_destroy( devclass );
 	
-	return 0;
+ 	if (cdev) {
+ 		cdev_del(cdev);
+ 	}
+ static void __exit vscdd_exit(void)
+ 
+ static int __init vscdd_init(void)
+ {
+	int i;
+ 	int result;
+ 	dev_t dev = 0;
+ 	result = 0;
+
+ 	} else {          
+ 		// если major == 0, то получить старший номер динамически
+ 		result = alloc_chrdev_region(&dev, minor, count, MODULE_NAME);
+ 	  	 // зафиксировать динамически полученный старший номер
+ 		major = MAJOR(dev);
+ 	}
+ 
+ 	if (result < 0) { 
+ 		pr_info("=== vscdd: can't get a majori ===\n");
+ 		return result;	
+ 	}
+ 
+ 	cdev = cdev_alloc();
+  	if (!cdev) {
+ 		result = -ENOMEM;
+ 		goto fail; 
+ 	}
+ 	cdev_init(cdev, &vscdd_fops);
+ 	cdev->owner   = THIS_MODULE;
+ 	if (cdev_add(cdev, dev, count)) { 
+ 		pr_info("=== vscdd: cdev_add error ===\n");
+ 	}
+ 	pr_info( "=== vscdd: %d:%d ===\n", major, minor);
 	
-	fail:
-		vscdd_exit();
-		pr_info("=== vscdd: register error ===\n");
-		return result; 
-}
+	devclass = class_create( THIS_MODULE, "vscdd_class" ); 
+   	
+   	for( i = 0; i < count; i++ ) {
+#define DEVNAME "vscdd"
+      	dev = MKDEV( major, minor + i );
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,26)
 
+      device_create( devclass, NULL, dev, "%s_%d", DEVNAME, i );
+#else
 
-/*
- * Функции загрузки и выгрузки модуля
- */
-module_init(vscdd_init);
-module_exit(vscdd_exit);
-
-MODULE_LICENSE("DUAL BSD/GPL");
+      device_create( devclass, NULL, dev, NULL, "%s_%d", DEVNAME, i );
+#endif
+   }
+   	pr_info( "=== vscdd: module installed %d:[%d-%d] ===\n", MAJOR(dev), minor, MINOR(dev) ); 
+ 
+ 	vscdd_buffer = kzalloc(100 * sizeof (*vscdd_buffer), GFP_KERNEL);
+ 	if (!vscdd_buffer) {
+ 		result = -ENOMEM;
+ 		goto fail;
+ 	}
+ 	
+ 	return 0;
+ 	
+ 	fail:
+ 		vscdd_exit();
+ 		pr_info("=== vscdd: register error ===\n");
+ 		return result; 
+ }
+ 
+ 
+ /*
+  * Функции загрузки и выгрузки модуля
+  */
+ module_init(vscdd_init);
+ module_exit(vscdd_exit);
+ 
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR ("МИФИ");
 MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства");
-MODULE_VERSION("20160503");
+MODULE_VERSION("20160524");
