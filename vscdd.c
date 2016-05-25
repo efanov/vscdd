@@ -154,7 +154,7 @@ loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
  
    out:
  ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
-  */
+
  struct file_operations vscdd_fops = {
  	.owner =    THIS_MODULE,
 	.llseek =   vscdd_llseek,
@@ -162,7 +162,7 @@ loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
  	.write =    vscdd_write,
  	.open =     vscdd_open,
  struct file_operations vscdd_fops = {
-  */
+
  static void __exit vscdd_exit(void) 
  {
 	dev_t dev;
@@ -178,7 +178,7 @@ loff_t vscdd_llseek(struct file *filp, loff_t offset, int origin)
  		cdev_del(cdev);
  	}
  static void __exit vscdd_exit(void)
-  */
+ 
  static int __init vscdd_init(void)
  {
 	int i;
