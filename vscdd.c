@@ -204,5 +204,5 @@ module_exit(vscdd_exit);
 
 MODULE_LICENSE("DUAL BSD/GPL");
 MODULE_AUTHOR ("МИФИ");
-MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства");
+MODULE_DESCRIPTION("Шаблон для разработки драйвера символьного устройства (выполнил Хлебников Николай К6-361)");
 MODULE_VERSION("20160503");
