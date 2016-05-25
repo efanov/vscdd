@@ -35,7 +35,7 @@ module_param(count, int, S_IRUGO);
  */
 static int device_open = 0;
 static struct class *devclass; 
-static int cur_size = 0;
+static int size = 0;
 /* 
  * Структура драйвера символьного устройства
  */ 
@@ -95,7 +95,6 @@ ssize_t vscdd_read(struct file *filp, char __user *buf, size_t count, loff_t *f_
   out:
 	return retval;
 }
-static int size = 0;
 /*
  * Функция записи в устройство
  */
@@ -125,17 +124,6 @@ ssize_t vscdd_write(struct file *filp, const char __user *buf, size_t count, lof
 	return retval;
 }
 
-/*
- * Функция драйвера для работы с устройством
- */
-struct file_operations vscdd_fops = {
-	.owner =    THIS_MODULE,
-	.llseek =    dev_llseek,
-	.read =     vscdd_read,
-	.write =    vscdd_write,
-	.open =     vscdd_open,
-	.release =  vscdd_release,
-};
 
 loff_t vscdd_llseek(struct file *filp, loff_t off, int cnt){
  	loff_t new_position;
@@ -161,6 +149,17 @@ loff_t vscdd_llseek(struct file *filp, loff_t off, int cnt){
  	filp->f_pos = new_position;
  	return new_position;
  }
+ /*
+ * Функция драйвера для работы с устройством
+ */
+struct file_operations vscdd_fops = {
+	.owner =    THIS_MODULE,
+	.llseek =   vscdd_llseek,
+	.read =     vscdd_read,
+	.write =    vscdd_write,
+	.open =     vscdd_open,
+	.release =  vscdd_release,
+};
 /* 
  * Функция выгрузки модуля и освобождения драйвера
  */
